@@ -7,9 +7,15 @@
   revision = "ea4d1f681babbce9545c9c5f3d5194a789c89f5b"
   version = "v1.2.0"
 
+[[projects]]
+  name = "github.com/johnny-debt/instascrap"
+  packages = ["."]
+  revision = "41f28a2dac76e56d70ad535688b343f9c7208578"
+  version = "v0.1.0"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "941e8dbe52e16e8a7dff4068b7ba53ae69a5748b29fbf2bcb5df3a063ac52261"
+  inputs-digest = "11faf9a141dd74cc9cb2d8926f026263234daf1196d26375c93bc4dd491dd3c5"
   solver-name = "gps-cdcl"
   solver-version = 1

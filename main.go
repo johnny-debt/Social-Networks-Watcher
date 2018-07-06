@@ -4,10 +4,37 @@ import (
 	"log"
 	"net/http"
 	"github.com/gorilla/websocket"
+	"encoding/json"
+	"fmt"
+	"github.com/johnny-debt/instascrap"
+	"github.com/johnny-debt/social-networks-watcher/watcher"
 )
 
 var clients = make(map[*websocket.Conn]bool) // connected clients
-var broadcast = make(chan Message)           // broadcast channel
+var subscriptions = make(map[string]map[*websocket.Conn]bool)
+var broadcast = make(chan Message) // broadcast channel
+var receiver = hashtagWatchingResultsReceiver{}
+var list = watcher.NewWatchedObjectsList(receiver)
+
+func processCommand(conn *websocket.Conn) {
+	// Read raw bytes from the connection
+	messageType, payload, err := conn.ReadMessage()
+	if err != nil {
+		log.Printf("Payload read error: %v\n", err)
+		return
+	}
+	log.Printf("Payload read [%d]: %s\n", messageType, payload)
+	// Parse raw bytes to the internal command struct
+	var command ClientCommand
+	err = json.Unmarshal(payload, &command);
+	if err != nil {
+		log.Printf("Payload parsing error: %v\n", err)
+		return
+	}
+	log.Printf("Command parsed: %v\n", command)
+	hashtag := watchedHashtag{slug: command.Hashtag}
+	list.Watch(hashtag)
+}
 
 // Configure the upgrader
 var upgrader = websocket.Upgrader{
@@ -19,7 +46,8 @@ var upgrader = websocket.Upgrader{
 type Message interface {}
 
 // Define our message object
-type MessageClientWatch struct {
+type ClientCommand struct {
+	Command string `json:"command"` // "watch" or "unwatch"
 	Hashtag string `json:"hashtag"`
 }
 
@@ -39,7 +67,7 @@ func main() {
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
-	// Upgrade initial GET request to a websocket
+	// Upgrade initial GET request to a WebSocket
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -51,14 +79,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 	clients[ws] = true
 
 	for {
-		var msg Message
 		// Read in a new message as JSON and map it to a Message object
-		messageType, p, err := ws.ReadMessage()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-		log.Printf("Message read [%d]: %s", messageType, p)
 		//err := ws.ReadJSON(&msg)
 		//if err != nil {
 		//	log.Printf("error: %v (ws.ReadJSON)", err)
@@ -66,7 +87,7 @@ func handleConnections(w http.ResponseWriter, r *http.Request) {
 		//	break
 		//}
 		// Send the newly received message to the broadcast channel
-		broadcast <- msg
+		processCommand(ws)
 	}
 }
 
@@ -83,5 +104,35 @@ func handleMessages() {
 				delete(clients, client)
 			}
 		}
+	}
+}
+
+type watchedHashtag struct {
+	slug string
+}
+
+func (hashtag watchedHashtag) Identifier () string {
+	return hashtag.slug
+}
+
+func (hashtag watchedHashtag) items() []interface{} {
+	medias, _:= instascrap.GetHashtagMedia("beer")
+	items := make([]interface{}, len(medias))
+	for i, v := range medias {
+		items[i] = v
+	}
+	return items
+}
+
+type hashtagWatchingResultsReceiver struct {
+
+}
+
+func (receiver hashtagWatchingResultsReceiver) receive (item interface{}, object watcher.WatchedObject) {
+	switch item.(type) {
+	case instascrap.Media:
+		fmt.Printf("Media #%s received for source %s\n", item.(instascrap.Media).ID, object.Identifier())
+	default:
+		fmt.Printf("Unknown object received (%T)\n", item)
 	}
 }
