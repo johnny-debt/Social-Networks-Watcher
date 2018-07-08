@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/johnny-debt/instascrap"
 	"github.com/johnny-debt/social-networks-watcher/watcher"
+	"time"
 )
 
 var clients = make(map[*websocket.Conn]bool) // connected clients
@@ -32,8 +33,15 @@ func processCommand(conn *websocket.Conn) {
 		return
 	}
 	log.Printf("Command parsed: %v\n", command)
-	hashtag := watchedHashtag{slug: command.Hashtag}
-	list.Watch(hashtag)
+	if command.Command == "watch" {
+		hashtag := watchedHashtag{slug: command.Hashtag}
+		if subscriptions[hashtag.Identifier()] == nil {
+			subscriptions[hashtag.Identifier()] = make(map[*websocket.Conn]bool)
+		}
+		subscriptions[hashtag.Identifier()][conn] = true
+		list.Watch(hashtag)
+	}
+
 }
 
 // Configure the upgrader
@@ -109,29 +117,45 @@ func handleMessages() {
 
 type watchedHashtag struct {
 	slug string
+	maxId string
 }
 
 func (hashtag watchedHashtag) Identifier () string {
 	return hashtag.slug
 }
 
-func (hashtag watchedHashtag) items() []interface{} {
+func (hashtag watchedHashtag) Items() []interface{} {
 	medias, _:= instascrap.GetHashtagMedia("beer")
-	items := make([]interface{}, len(medias))
-	for i, v := range medias {
-		items[i] = v
+	var items []interface{}
+	for _, v := range medias {
+		if hashtag.maxId == "" || v.ID > hashtag.maxId {
+			hashtag.maxId = v.ID
+			items = append(items, v)
+		}
 	}
 	return items
+}
+
+func (hashtag watchedHashtag) GetInterval () time.Duration {
+	return time.Second * 2
 }
 
 type hashtagWatchingResultsReceiver struct {
 
 }
 
-func (receiver hashtagWatchingResultsReceiver) receive (item interface{}, object watcher.WatchedObject) {
+func (receiver hashtagWatchingResultsReceiver) Receive (item interface{}, object watcher.WatchedObject) {
 	switch item.(type) {
 	case instascrap.Media:
 		fmt.Printf("Media #%s received for source %s\n", item.(instascrap.Media).ID, object.Identifier())
+		// Send this media to all subscribers
+		subscribers := subscriptions[object.Identifier()]
+		if subscribers == nil {
+			fmt.Printf("Nobody is subscribed to the [%s] object\n", object.Identifier())
+		}
+		for conn, _ := range subscribers {
+			conn.WriteJSON(item)
+		}
 	default:
 		fmt.Printf("Unknown object received (%T)\n", item)
 	}

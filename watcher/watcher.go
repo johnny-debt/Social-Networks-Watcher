@@ -7,11 +7,12 @@ import (
 
 type WatchedObject interface {
 	Identifier() string
-	items() []interface{}
+	Items() []interface{}
+	GetInterval() time.Duration
 }
 
 type WatchingResultsReceiver interface {
-	receive(interface{}, WatchedObject)
+	Receive(interface{}, WatchedObject)
 }
 
 // Each watched object has a map with Watched Object Identifier as a key and Subscribed users number as a value.
@@ -34,15 +35,15 @@ func watcher(stop chan bool, object WatchedObject, receiver WatchingResultsRecei
 		select {
 		default:
 			fmt.Printf("Watcher of [%v] has new iteration\n", object.Identifier())
-			items := object.items()
+			items := object.Items()
 			for _, item := range items {
-				receiver.receive(item, object)
+				receiver.Receive(item, object)
 			}
 		case <-stop:
 			fmt.Printf("Signal stop received for watcher of [%v]\n", object.Identifier())
 			return
 		}
-		time.Sleep(time.Millisecond * 500)
+		time.Sleep(object.GetInterval())
 	}
 }
 
