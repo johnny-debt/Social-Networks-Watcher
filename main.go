@@ -9,20 +9,22 @@ import (
 	"github.com/johnny-debt/instascrap"
 	"github.com/johnny-debt/social-networks-watcher/watcher"
 	"time"
+	"github.com/johnny-debt/social-networks-watcher/wsconnshub"
+	"sort"
 )
 
-var clients = make(map[*websocket.Conn]bool) // connected clients
-var subscriptions = make(map[string]map[*websocket.Conn]bool)
-var broadcast = make(chan Message) // broadcast channel
+var wsConnectionsHub = wsconnshub.NewWsConnectionsHub()
 var receiver = hashtagWatchingResultsReceiver{}
 var list = watcher.NewWatchedObjectsList(receiver)
+var maxIds = make(map[string]string)
 
-func processCommand(conn *websocket.Conn) {
+
+func processCommand(conn *websocket.Conn) bool {
 	// Read raw bytes from the connection
 	messageType, payload, err := conn.ReadMessage()
 	if err != nil {
 		log.Printf("Payload read error: %v\n", err)
-		return
+		return false
 	}
 	log.Printf("Payload read [%d]: %s\n", messageType, payload)
 	// Parse raw bytes to the internal command struct
@@ -30,18 +32,15 @@ func processCommand(conn *websocket.Conn) {
 	err = json.Unmarshal(payload, &command);
 	if err != nil {
 		log.Printf("Payload parsing error: %v\n", err)
-		return
+		return true
 	}
 	log.Printf("Command parsed: %v\n", command)
 	if command.Command == "watch" {
 		hashtag := watchedHashtag{slug: command.Hashtag}
-		if subscriptions[hashtag.Identifier()] == nil {
-			subscriptions[hashtag.Identifier()] = make(map[*websocket.Conn]bool)
-		}
-		subscriptions[hashtag.Identifier()][conn] = true
+		wsConnectionsHub.Subscribe(conn, wsconnshub.Topic(hashtag.Identifier()))
 		list.Watch(hashtag)
 	}
-
+	return true
 }
 
 // Configure the upgrader
@@ -60,12 +59,8 @@ type ClientCommand struct {
 }
 
 func main() {
-	// Configure websocket route
+	// Configure WebSocket route
 	http.HandleFunc("/ws", handleConnections)
-
-	// Start listening for incoming chat messages
-	go handleMessages()
-
 	// Start the server on localhost port 8000 and log any errors
 	log.Println("http server started on :8000")
 	err := http.ListenAndServe(":8000", nil)
@@ -76,41 +71,19 @@ func main() {
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
 	// Upgrade initial GET request to a WebSocket
-	ws, err := upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Make sure we close the connection when the function returns
-	defer ws.Close()
+	defer wsConnectionsHub.RemoveConnection(conn)
 
 	// Register our new client
-	clients[ws] = true
+	wsConnectionsHub.AddConnection(conn)
 
 	for {
-		// Read in a new message as JSON and map it to a Message object
-		//err := ws.ReadJSON(&msg)
-		//if err != nil {
-		//	log.Printf("error: %v (ws.ReadJSON)", err)
-		//	delete(clients, ws)
-		//	break
-		//}
-		// Send the newly received message to the broadcast channel
-		processCommand(ws)
-	}
-}
-
-func handleMessages() {
-	for {
-		// Grab the next message from the broadcast channel
-		msg := <-broadcast
-		// Send it out to every client that is currently connected
-		for client := range clients {
-			err := client.WriteJSON(msg)
-			if err != nil {
-				log.Printf("error: %v (client.WriteJSON)", err)
-				client.Close()
-				delete(clients, client)
-			}
+		if !processCommand(conn) {
+			break
 		}
 	}
 }
@@ -125,12 +98,23 @@ func (hashtag watchedHashtag) Identifier () string {
 }
 
 func (hashtag watchedHashtag) Items() []interface{} {
-	medias, _:= instascrap.GetHashtagMedia("beer")
+	medias, _:= instascrap.GetHashtagMedia(hashtag.slug)
+	// Sort medias be ascending ID
+	sort.SliceStable(medias, func(i, j int) bool {
+		return medias[i].ID < medias[j].ID
+	})
+
 	var items []interface{}
 	for _, v := range medias {
-		if hashtag.maxId == "" || v.ID > hashtag.maxId {
-			hashtag.maxId = v.ID
+		maxId, exists := maxIds[hashtag.slug]
+		if !exists {
+			fmt.Printf("Hashtag maxId is empty string!\n")
+		}
+		if !exists || v.ID > maxId {
+			maxIds[hashtag.slug] = v.ID
 			items = append(items, v)
+		} else {
+			fmt.Printf("Item is skipped [%s]\n", v.ID)
 		}
 	}
 	return items
@@ -149,11 +133,9 @@ func (receiver hashtagWatchingResultsReceiver) Receive (item interface{}, object
 	case instascrap.Media:
 		fmt.Printf("Media #%s received for source %s\n", item.(instascrap.Media).ID, object.Identifier())
 		// Send this media to all subscribers
-		subscribers := subscriptions[object.Identifier()]
-		if subscribers == nil {
-			fmt.Printf("Nobody is subscribed to the [%s] object\n", object.Identifier())
-		}
-		for conn, _ := range subscribers {
+		subscribers := wsConnectionsHub.GetSubscribedConnections(wsconnshub.Topic(object.Identifier()))
+		for _, subscriber := range subscribers {
+			conn := (*websocket.Conn)(subscriber)
 			conn.WriteJSON(item)
 		}
 	default:
