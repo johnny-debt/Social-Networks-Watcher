@@ -107,14 +107,9 @@ func (hashtag watchedHashtag) Items() []interface{} {
 	var items []interface{}
 	for _, v := range medias {
 		maxId, exists := maxIds[hashtag.slug]
-		if !exists {
-			fmt.Printf("Hashtag maxId is empty string!\n")
-		}
 		if !exists || v.ID > maxId {
 			maxIds[hashtag.slug] = v.ID
 			items = append(items, v)
-		} else {
-			fmt.Printf("Item is skipped [%s]\n", v.ID)
 		}
 	}
 	return items
