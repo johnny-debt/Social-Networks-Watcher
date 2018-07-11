@@ -11,6 +11,7 @@ import (
 	"time"
 	"github.com/johnny-debt/social-networks-watcher/wsconnshub"
 	"sort"
+	"os"
 )
 
 var wsConnectionsHub = wsconnshub.NewWsConnectionsHub()
@@ -61,9 +62,13 @@ type ClientCommand struct {
 func main() {
 	// Configure WebSocket route
 	http.HandleFunc("/ws", handleConnections)
+	port := os.Getenv("SOCNETWATCH_PORT")
+	if port == "" {
+		port = "8000"
+	}
 	// Start the server on localhost port 8000 and log any errors
-	log.Println("http server started on :8000")
-	err := http.ListenAndServe(":8000", nil)
+	log.Println("http server started on :" + port)
+	err := http.ListenAndServe(":" + port, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
