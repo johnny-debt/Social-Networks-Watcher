@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/johnny-debt/instascrap"
-	"github.com/johnny-debt/social-networks-watcher/watcher"
+	"github.com/johnny-debt/hashtag-connector/watcher"
 	"time"
-	"github.com/johnny-debt/social-networks-watcher/wsconnshub"
+	"github.com/johnny-debt/hashtag-connector/wsconnshub"
 	"sort"
 	"os"
 )
