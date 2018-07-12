@@ -25,7 +25,6 @@ build:
 
 docker:
   stage: docker
-  image: docker:stable
   services:
   - docker:dind
   script:
