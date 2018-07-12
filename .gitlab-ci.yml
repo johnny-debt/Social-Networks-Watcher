@@ -25,6 +25,10 @@ build:
 
 docker:
   stage: docker
-  docker build -t registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8} -f Dockerfile.scratch .
-  docker login registry.gitlab.com -u ${REGISTRY_LOGIN} -p ${REGISTRY_PASSWORD}
-  docker push registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8}
+  image: docker:stable
+  services:
+  - docker:dind
+  script:
+  - docker build -t registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8} -f Dockerfile.scratch .
+  - docker login registry.gitlab.com -u ${REGISTRY_LOGIN} -p ${REGISTRY_PASSWORD}
+  - docker push registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8}
