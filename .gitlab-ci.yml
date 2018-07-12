@@ -3,6 +3,7 @@ image: golang:1.10
 stages:
 - test
 - build
+- docker
 
 before_script:
 - go get -u github.com/golang/dep/cmd/dep
@@ -20,4 +21,10 @@ test:
 build:
   stage: build
   script:
-  - go build
+  - CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+docker:
+  stage: docker
+  docker build -t registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8} -f Dockerfile.scratch .
+  docker login registry.gitlab.com -u ${REGISTRY_LOGIN} -p ${REGISTRY_PASSWORD}
+  docker push registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8}
