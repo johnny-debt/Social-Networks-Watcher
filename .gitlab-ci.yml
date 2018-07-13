@@ -5,29 +5,52 @@ stages:
 - build
 - docker
 
-before_script:
-- go get -u github.com/golang/dep/cmd/dep
-- mkdir -p $GOPATH/src
-- cd $GOPATH/src
-- ln -s $CI_PROJECT_DIR
-- cd $CI_PROJECT_NAME
-- dep ensure
+#before_script:
 
 test:
   stage: test
   script:
+  - go get -u github.com/golang/dep/cmd/dep
+  - mkdir -p $GOPATH/src
+  - cd $GOPATH/src
+  - ln -s $CI_PROJECT_DIR
+  - cd $CI_PROJECT_NAME
+  - dep ensure
   - go test
 
 build:
   stage: build
   script:
+  - go get -u github.com/golang/dep/cmd/dep
+  - mkdir -p $GOPATH/src
+  - cd $GOPATH/src
+  - ln -s $CI_PROJECT_DIR
+  - cd $CI_PROJECT_NAME
+  - dep ensure
   - CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
-docker:
+#docker:
+#  stage: docker
+#  services:
+#  - docker:dind
+#  script:
+#  - docker build -t registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8} -f Dockerfile.scratch .
+#  - docker login registry.gitlab.com -u ${REGISTRY_LOGIN} -p ${REGISTRY_PASSWORD}
+#  - docker push registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8}
+
+docker:image:
   stage: docker
+  image: docker:latest
   services:
   - docker:dind
   script:
-  - docker build -t registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8} -f Dockerfile.scratch .
-  - docker login registry.gitlab.com -u ${REGISTRY_LOGIN} -p ${REGISTRY_PASSWORD}
-  - docker push registry.gitlab.com/lasayter/hashtag-connector:${CI_COMMIT_SHA:0:8}
+  - docker version
+  - docker build -t $CI_REGISTRY_IMAGE:latest .
+  - docker tag $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}
+  - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
+  - docker push $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}
+  # push only for tags
+#  - "[[ -z $CI_BUILD_TAG ]] && exit 0"
+#  - docker tag $CI_REGISTRY_IMAGE:latest $CI_REGISTRY_IMAGE:$CI_BUILD_TAG
+#  - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN $CI_REGISTRY
+#  - docker push $CI_REGISTRY_IMAGE:$CI_BUILD_TAG
